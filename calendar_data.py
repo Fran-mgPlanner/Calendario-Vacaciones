@@ -96,14 +96,23 @@ def get_contrast_text_color(hex_color: str) -> str:
     return "#FFFFFF" if luminance < 0.58 else "#111827"
 
 
+def _get_day_person_ids(raw_val: Any) -> list[str]:
+    if isinstance(raw_val, str) and raw_val:
+        return [raw_val]
+    if isinstance(raw_val, list):
+        return [pid for pid in raw_val if isinstance(pid, str) and pid][:3]
+    return []
+
+
 def build_legend_html(data: dict[str, Any]) -> str:
     """Genera el HTML de la leyenda con los colores y nombres de las personas."""
     people: dict[str, dict[str, str]] = data.get("people", {})
-    days: dict[str, str] = data.get("days", {})
+    days: dict[str, Any] = data.get("days", {})
 
     counts: dict[str, int] = {}
-    for person_id in days.values():
-        counts[person_id] = counts.get(person_id, 0) + 1
+    for raw_val in days.values():
+        for person_id in _get_day_person_ids(raw_val):
+            counts[person_id] = counts.get(person_id, 0) + 1
 
     items_html = [
         '<div class="legend-item">'
@@ -136,7 +145,7 @@ def build_legend_html(data: dict[str, Any]) -> str:
 def build_calendar_html(data: dict[str, Any]) -> str:
     """Genera el HTML completo del calendario 2027 (12 meses + leyenda + feriados)."""
     people: dict[str, dict[str, str]] = data.get("people", {})
-    days_map: dict[str, str] = data.get("days", {})
+    days_map: dict[str, Any] = data.get("days", {})
 
     months_html: list[str] = []
     for m in range(1, 13):
@@ -155,30 +164,35 @@ def build_calendar_html(data: dict[str, Any]) -> str:
                 iso = f"{YEAR}-{m:02d}-{day_num:02d}"
                 is_weekend = idx >= 5
                 holiday_name = HOLIDAYS.get(iso)
-                person_id = days_map.get(iso)
-                person = people.get(person_id) if person_id else None
+                day_pids = _get_day_person_ids(days_map.get(iso))
+                assigned_people = [people[pid] for pid in day_pids if pid in people]
 
                 classes = ["day-cell"]
                 if is_weekend:
                     classes.append("weekend")
                 if holiday_name:
                     classes.append("holiday")
+                if assigned_people:
+                    classes.append("has-marks")
 
-                style_parts: list[str] = []
                 title_parts: list[str] = [f"{day_num:02d} {MONTH_ABBR[m-1]} {YEAR}"]
-
-                if person:
-                    bg = person.get("color", "#3B82F6")
-                    fg = get_contrast_text_color(bg)
-                    style_parts.append(f"background-color:{escape(bg)};color:{fg};font-weight:700;")
-                    title_parts.append(f"Asignado a: {person.get('name', '')}")
+                if assigned_people:
+                    names_str = ", ".join(p.get("name", "") for p in assigned_people)
+                    title_parts.append(f"Asignado a: {names_str}")
                 if holiday_name:
                     title_parts.append(f"Feriado: {holiday_name}")
 
-                style_attr = f' style="{"".join(style_parts)}"' if style_parts else ""
+                bars_html = "".join(
+                    f'<span class="mark-bar" style="background-color:{escape(p.get("color", "#3B82F6"))};"></span>'
+                    for p in assigned_people
+                )
+                marks_html = f'<div class="day-marks">{bars_html}</div>' if bars_html else '<div class="day-marks empty-marks"></div>'
+
                 title_attr = f' title="{escape(" | ".join(title_parts))}"'
                 td_cells.append(
-                    f'<td class="{" ".join(classes)}"{style_attr}{title_attr}>{day_num}</td>'
+                    f'<td class="{" ".join(classes)}"{title_attr}>'
+                    f'<div class="day-num">{day_num}</div>{marks_html}'
+                    f'</td>'
                 )
 
             rows_html.append(f'<tr>{"".join(td_cells)}</tr>')
@@ -420,8 +434,9 @@ CALENDAR_CSS = """
 }
 .month-table td {
     text-align: center;
-    padding: 3px 1px;
-    height: 22px;
+    padding: 2px 1px;
+    height: 27px;
+    vertical-align: top;
     border-radius: 2px;
 }
 .month-table td.sem-col {
@@ -429,18 +444,42 @@ CALENDAR_CSS = """
     font-size: 10px;
     color: #9ca3af;
     font-weight: 500;
+    vertical-align: middle;
 }
 .month-table td.day-cell {
     color: #1f2937;
 }
-.month-table td.day-cell.weekend {
+.month-table td.day-cell.weekend .day-num {
     font-weight: 700;
 }
 .month-table td.day-cell.holiday {
     background-color: #fdeaea;
     color: #c0392b;
-    font-weight: 700;
     border-bottom: 2px solid #c0392b;
+}
+.month-table td.day-cell.holiday .day-num {
+    color: #c0392b;
+    font-weight: 700;
+}
+.day-num {
+    line-height: 1.15;
+    font-size: 11px;
+}
+.day-marks {
+    display: flex;
+    gap: 1.5px;
+    width: 86%;
+    margin: 2px auto 0 auto;
+    height: 5px;
+}
+.day-marks.empty-marks {
+    visibility: hidden;
+}
+.mark-bar {
+    flex: 1 1 0;
+    height: 100%;
+    border-radius: 1.5px;
+    border: 0.5px solid rgba(0, 0, 0, 0.15);
 }
 
 /* Feriados footer */
@@ -585,9 +624,15 @@ body {{
         gap: 6px 10px;
     }}
     .month-table td {{
-        height: 17px;
-        padding: 1.5px 1px;
-        font-size: 10px;
+        height: 21px;
+        padding: 1px 1px;
+    }}
+    .day-num {{
+        font-size: 9.5px;
+    }}
+    .day-marks {{
+        height: 4px;
+        margin-top: 1px;
     }}
     .legend-box {{
         padding: 5px 8px;

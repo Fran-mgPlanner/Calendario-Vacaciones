@@ -26,11 +26,98 @@ st.set_page_config(
 
 st.markdown(CALENDAR_CSS, unsafe_allow_html=True)
 
+MONTH_NAMES_TITLE = [m.capitalize() for m in MONTH_NAMES]
+
 
 def _slugify(name: str) -> str:
     clean = re.sub(r"\s+", " ", name.strip().lower())
     slug = re.sub(r"[^a-z0-9áéíóúñü]+", "-", clean).strip("-")
     return slug or "persona"
+
+
+def _spanish_date_selector(label: str, key_prefix: str, default_month: int = 1, default_day: int = 1) -> date:
+    """Selector de fecha 2027 con nombres de meses 100% en español."""
+    st.caption(label)
+    c_mes, c_dia = st.columns([1.6, 1])
+    with c_mes:
+        month = st.selectbox(
+            "Mes",
+            options=list(range(1, 13)),
+            index=default_month - 1,
+            format_func=lambda m: MONTH_NAMES_TITLE[m - 1],
+            key=f"{key_prefix}_m",
+            label_visibility="collapsed",
+        )
+    max_day = calendar.monthrange(YEAR, month)[1]
+    prev_day = st.session_state.get(f"{key_prefix}_d", default_day)
+    safe_day = min(prev_day, max_day)
+    with c_dia:
+        day = st.selectbox(
+            "Día",
+            options=list(range(1, max_day + 1)),
+            index=safe_day - 1,
+            key=f"{key_prefix}_d",
+            label_visibility="collapsed",
+        )
+    return date(YEAR, month, day)
+
+
+def _format_spanish_date(d: date) -> str:
+    return f"{d.day:02d} de {MONTH_NAMES_TITLE[d.month - 1]} de {d.year}"
+
+
+def _apply_dates_change(
+    target_dates: list[str],
+    selected_pid: str,
+    sel_name: str,
+    is_mark: bool,
+) -> None:
+    """Marca o quita días para la persona activa (máximo 3 personas por día)."""
+    skipped_full = 0
+
+    def _mutate(d: dict[str, Any]) -> None:
+        nonlocal skipped_full
+        days_dict: dict[str, Any] = d.setdefault("days", {})
+        for iso in target_dates:
+            raw = days_dict.get(iso, [])
+            if isinstance(raw, str):
+                cur_list = [raw] if raw else []
+            elif isinstance(raw, list):
+                cur_list = [x for x in raw if isinstance(x, str) and x]
+            else:
+                cur_list = []
+
+            if is_mark:
+                if selected_pid in cur_list:
+                    continue
+                if len(cur_list) >= 3:
+                    skipped_full += 1
+                    continue
+                cur_list.append(selected_pid)
+                days_dict[iso] = cur_list
+            else:
+                if selected_pid in cur_list:
+                    cur_list = [x for x in cur_list if x != selected_pid]
+                if cur_list:
+                    days_dict[iso] = cur_list
+                else:
+                    days_dict.pop(iso, None)
+
+    action_txt = (
+        f"Marcar {len(target_dates)} días ({sel_name})"
+        if is_mark
+        else f"Quitar {len(target_dates)} días ({sel_name})"
+    )
+    try:
+        st.session_state["cal_data"] = update_data(_mutate, commit_message=action_txt)
+        if skipped_full > 0:
+            st.warning(
+                f"Se omitieron {skipped_full} día(s) porque ya tenían el máximo de 3 personas asignadas."
+            )
+        st.toast(action_txt, icon="✅" if is_mark else "🧹")
+        st.rerun()
+    except Exception as exc:
+        st.error(f"Error al guardar: {exc}")
 
 
 def _load_fresh() -> dict[str, Any]:
@@ -57,7 +144,11 @@ with st.sidebar:
 
     col_sync, col_mode = st.columns([1.2, 1])
     with col_sync:
-        if st.button("🔄 Actualizar", use_container_width=True, help="Cargar los últimos cambios guardados por otras personas"):
+        if st.button(
+            "🔄 Actualizar",
+            use_container_width=True,
+            help="Cargar los últimos cambios guardados por otras personas",
+        ):
             data = _load_fresh()
             people = data.get("people", {})
             st.toast("Calendario actualizado", icon="🔄")
@@ -98,8 +189,9 @@ with st.sidebar:
             except Exception as exc:
                 st.error(f"No se pudo guardar: {exc}")
 
-    # 2. Marcar periodos o días
-    st.subheader("2. Marcar Periodo / Días")
+    # 2. Marcar periodos
+    st.subheader("2. Marcar Periodo")
+    st.caption("Hasta **3 personas** pueden coincidir en un mismo día.")
 
     if not people:
         st.info("Agrega al menos una persona arriba para comenzar a marcar días.")
@@ -125,90 +217,56 @@ with st.sidebar:
             unsafe_allow_html=True,
         )
 
-        tab_rango, tab_dias = st.tabs(["📆 Por Periodo", "🔢 Días sueltos"])
+        tab_rango, tab_inicio = st.tabs(["📆 Por Periodo", "📅 Por Fecha de Inicio"])
 
         with tab_rango:
-            d_start = st.date_input(
-                "Desde",
-                value=date(YEAR, 1, 1),
-                min_value=date(YEAR, 1, 1),
-                max_value=date(YEAR, 12, 31),
-                format="DD/MM/YYYY",
-            )
-            d_end = st.date_input(
-                "Hasta",
-                value=date(YEAR, 1, 7),
-                min_value=date(YEAR, 1, 1),
-                max_value=date(YEAR, 12, 31),
-                format="DD/MM/YYYY",
-            )
+            d_start = _spanish_date_selector("Fecha de inicio", "rng_start", default_month=1, default_day=1)
+            d_end = _spanish_date_selector("Fecha de fin", "rng_end", default_month=1, default_day=7)
 
             c1, c2 = st.columns(2)
             with c1:
-                mark_range = st.button("✅ Marcar", use_container_width=True, type="primary")
+                mark_range = st.button("✅ Marcar", key="btn_mark_rng", use_container_width=True, type="primary")
             with c2:
-                clear_range = st.button("🧹 Limpiar", use_container_width=True)
+                clear_range = st.button("🧹 Quitar", key="btn_clear_rng", use_container_width=True)
 
             if mark_range or clear_range:
                 if d_end < d_start:
-                    st.warning("La fecha 'Hasta' debe ser igual o posterior a 'Desde'.")
+                    st.warning("La fecha de fin debe ser igual o posterior a la fecha de inicio.")
                 else:
                     target_dates: list[str] = []
                     cur = d_start
                     while cur <= d_end:
                         target_dates.append(cur.isoformat())
                         cur += timedelta(days=1)
+                    _apply_dates_change(target_dates, selected_pid, sel_name, is_mark=mark_range)
 
-                    def _apply_range(d: dict[str, Any]) -> None:
-                        for iso in target_dates:
-                            if mark_range:
-                                d["days"][iso] = selected_pid
-                            else:
-                                d["days"].pop(iso, None)
-
-                    action_txt = f"Marcar {len(target_dates)} días ({sel_name})" if mark_range else f"Limpiar {len(target_dates)} días"
-                    try:
-                        st.session_state["cal_data"] = update_data(_apply_range, commit_message=action_txt)
-                        st.toast(action_txt, icon="✅" if mark_range else "🧹")
-                        st.rerun()
-                    except Exception as exc:
-                        st.error(f"Error al guardar: {exc}")
-
-        with tab_dias:
-            sel_month_idx = st.selectbox(
-                "Mes",
-                options=list(range(1, 13)),
-                format_func=lambda m: f"{m:02d} - {MONTH_NAMES[m - 1]}",
+        with tab_inicio:
+            d_ini = _spanish_date_selector("Fecha de inicio", "ini_start", default_month=1, default_day=1)
+            cant_dias = int(
+                st.number_input(
+                    "Cantidad de días (incluyendo el inicio)",
+                    min_value=1,
+                    max_value=365,
+                    value=7,
+                    step=1,
+                )
             )
-            max_day = calendar.monthrange(YEAR, sel_month_idx)[1]
-            sel_days = st.multiselect(
-                "Días del mes",
-                options=list(range(1, max_day + 1)),
-                placeholder="Elige uno o más días",
-            )
+            d_calc_end = min(d_ini + timedelta(days=cant_dias - 1), date(YEAR, 12, 31))
+            st.caption(f"Del **{d_ini.day:02d}/{d_ini.month:02d}** al **{_format_spanish_date(d_calc_end)}**")
+
             c3, c4 = st.columns(2)
             with c3:
-                mark_days = st.button("✅ Aplicar", key="btn_mark_days", use_container_width=True, type="primary")
+                mark_ini = st.button("✅ Marcar", key="btn_mark_ini", use_container_width=True, type="primary")
             with c4:
-                clear_days = st.button("🧹 Quitar", key="btn_clear_days", use_container_width=True)
+                clear_ini = st.button("🧹 Quitar", key="btn_clear_ini", use_container_width=True)
 
-            if (mark_days or clear_days) and sel_days:
-                iso_list = [f"{YEAR}-{sel_month_idx:02d}-{day:02d}" for day in sel_days]
-
-                def _apply_days(d: dict[str, Any]) -> None:
-                    for iso in iso_list:
-                        if mark_days:
-                            d["days"][iso] = selected_pid
-                        else:
-                            d["days"].pop(iso, None)
-
-                action_txt = f"Actualizar {len(iso_list)} días de {MONTH_NAMES[sel_month_idx - 1]}"
-                try:
-                    st.session_state["cal_data"] = update_data(_apply_days, commit_message=action_txt)
-                    st.toast(action_txt, icon="✅" if mark_days else "🧹")
-                    st.rerun()
-                except Exception as exc:
-                    st.error(f"Error al guardar: {exc}")
+            if mark_ini or clear_ini:
+                target_dates = []
+                cur = d_ini
+                while cur <= d_calc_end:
+                    target_dates.append(cur.isoformat())
+                    cur += timedelta(days=1)
+                _apply_dates_change(target_dates, selected_pid, sel_name, is_mark=mark_ini)
 
         with st.expander("⚙️ Administrar personas"):
             del_pid = st.selectbox(
@@ -222,7 +280,13 @@ with st.sidebar:
 
                 def _remove_person(d: dict[str, Any]) -> None:
                     d["people"].pop(del_pid, None)
-                    d["days"] = {k: v for k, v in d["days"].items() if v != del_pid}
+                    new_days: dict[str, list[str]] = {}
+                    for k, v in d.get("days", {}).items():
+                        lst = [v] if isinstance(v, str) else list(v) if isinstance(v, list) else []
+                        filtered = [x for x in lst if x != del_pid]
+                        if filtered:
+                            new_days[k] = filtered
+                    d["days"] = new_days
 
                 try:
                     st.session_state["cal_data"] = update_data(

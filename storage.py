@@ -46,10 +46,24 @@ def _normalize_data(raw: Any) -> dict[str, Any]:
     if not isinstance(raw, dict):
         return {"people": {}, "days": {}}
     people = raw.get("people")
-    days = raw.get("days")
+    raw_days = raw.get("days")
+    norm_days: dict[str, list[str]] = {}
+    if isinstance(raw_days, dict):
+        for iso, val in raw_days.items():
+            if isinstance(val, str) and val:
+                norm_days[iso] = [val]
+            elif isinstance(val, list):
+                seen: list[str] = []
+                for pid in val:
+                    if isinstance(pid, str) and pid and pid not in seen:
+                        seen.append(pid)
+                    if len(seen) >= 3:
+                        break
+                if seen:
+                    norm_days[iso] = seen
     return {
         "people": people if isinstance(people, dict) else {},
-        "days": days if isinstance(days, dict) else {},
+        "days": norm_days,
     }
 
 
