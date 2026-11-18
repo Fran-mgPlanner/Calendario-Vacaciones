@@ -224,7 +224,7 @@ def build_calendar_html(data: dict[str, Any]) -> str:
 
     legend_html = build_legend_html(data)
 
-    return f"""
+    html = f"""
     <div id="printable-calendar" class="cal-wrapper">
         <div class="cal-top-header">
             <div>
@@ -256,6 +256,7 @@ def build_calendar_html(data: dict[str, Any]) -> str:
         </div>
     </div>
     """
+    return "\n".join(line.lstrip() for line in html.splitlines() if line.strip())
 
 
 CALENDAR_CSS = """
