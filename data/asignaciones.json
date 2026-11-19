@@ -47,10 +47,12 @@
   },
   "days": {
     "2027-06-21": [
-      "rodrigo-roman"
+      "rodrigo-roman",
+      "sergio-gonzales"
     ],
     "2027-06-22": [
-      "rodrigo-roman"
+      "rodrigo-roman",
+      "sergio-gonzales"
     ],
     "2027-01-18": [
       "fatima-calderon"
@@ -670,6 +672,27 @@
       "sergio-gonzales"
     ],
     "2027-03-21": [
+      "sergio-gonzales"
+    ],
+    "2027-06-14": [
+      "sergio-gonzales"
+    ],
+    "2027-06-15": [
+      "sergio-gonzales"
+    ],
+    "2027-06-16": [
+      "sergio-gonzales"
+    ],
+    "2027-06-17": [
+      "sergio-gonzales"
+    ],
+    "2027-06-18": [
+      "sergio-gonzales"
+    ],
+    "2027-06-19": [
+      "sergio-gonzales"
+    ],
+    "2027-06-20": [
       "sergio-gonzales"
     ]
   }
