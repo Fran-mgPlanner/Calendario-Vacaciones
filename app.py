@@ -9,9 +9,10 @@ import streamlit as st
 
 from calendar_data import (
     CALENDAR_CSS,
+    CALENDAR_MONTHS,
+    MAX_PEOPLE_PER_DAY,
     MONTH_NAMES,
     PRESET_COLORS,
-    YEAR,
     build_calendar_html,
     build_printable_document,
 )
@@ -36,19 +37,19 @@ def _slugify(name: str) -> str:
 
 
 def _spanish_date_selector(label: str, key_prefix: str, default_month: int = 1, default_day: int = 1) -> date:
-    """Selector de fecha 2027 con nombres de meses 100% en español."""
+    """Selector de fecha (2027 - Ene 2028) con nombres de meses 100% en español."""
     st.caption(label)
-    c_mes, c_dia = st.columns([1.6, 1])
+    c_mes, c_dia = st.columns([1.8, 1])
     with c_mes:
-        month = st.selectbox(
+        yr, month = st.selectbox(
             "Mes",
-            options=list(range(1, 13)),
+            options=CALENDAR_MONTHS,
             index=default_month - 1,
-            format_func=lambda m: MONTH_NAMES_TITLE[m - 1],
+            format_func=lambda ym: f"{MONTH_NAMES_TITLE[ym[1] - 1]} {ym[0]}",
             key=f"{key_prefix}_m",
             label_visibility="collapsed",
         )
-    max_day = calendar.monthrange(YEAR, month)[1]
+    max_day = calendar.monthrange(yr, month)[1]
     prev_day = st.session_state.get(f"{key_prefix}_d", default_day)
     safe_day = min(prev_day, max_day)
     with c_dia:
@@ -59,7 +60,7 @@ def _spanish_date_selector(label: str, key_prefix: str, default_month: int = 1, 
             key=f"{key_prefix}_d",
             label_visibility="collapsed",
         )
-    return date(YEAR, month, day)
+    return date(yr, month, day)
 
 
 def _format_spanish_date(d: date) -> str:
@@ -90,7 +91,7 @@ def _apply_dates_change(
             if is_mark:
                 if selected_pid in cur_list:
                     continue
-                if len(cur_list) >= 3:
+                if len(cur_list) >= MAX_PEOPLE_PER_DAY:
                     skipped_full += 1
                     continue
                 cur_list.append(selected_pid)
@@ -112,7 +113,7 @@ def _apply_dates_change(
         st.session_state["cal_data"] = update_data(_mutate, commit_message=action_txt)
         if skipped_full > 0:
             st.warning(
-                f"Se omitieron {skipped_full} día(s) porque ya tenían el máximo de 3 personas asignadas."
+                f"Se omitieron {skipped_full} día(s) porque ya tenían el máximo de {MAX_PEOPLE_PER_DAY} personas asignadas."
             )
         st.toast(action_txt, icon="✅" if is_mark else "🧹")
         st.rerun()
@@ -191,7 +192,7 @@ with st.sidebar:
 
     # 2. Marcar periodos
     st.subheader("2. Marcar Periodo")
-    st.caption("Hasta **3 personas** pueden coincidir en un mismo día.")
+    st.caption(f"Hasta **{MAX_PEOPLE_PER_DAY} personas** pueden coincidir en un mismo día.")
 
     if not people:
         st.info("Agrega al menos una persona arriba para comenzar a marcar días.")
@@ -251,7 +252,7 @@ with st.sidebar:
                     step=1,
                 )
             )
-            d_calc_end = min(d_ini + timedelta(days=cant_dias - 1), date(YEAR, 12, 31))
+            d_calc_end = min(d_ini + timedelta(days=cant_dias - 1), date(2028, 1, 31))
             st.caption(f"Del **{d_ini.day:02d}/{d_ini.month:02d}** al **{_format_spanish_date(d_calc_end)}**")
 
             c3, c4 = st.columns(2)

@@ -57,7 +57,7 @@ def _normalize_data(raw: Any) -> dict[str, Any]:
                 for pid in val:
                     if isinstance(pid, str) and pid and pid not in seen:
                         seen.append(pid)
-                    if len(seen) >= 3:
+                    if len(seen) >= 5:
                         break
                 if seen:
                     norm_days[iso] = seen

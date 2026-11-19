@@ -6,6 +6,8 @@ from html import escape
 from typing import Any
 
 YEAR = 2027
+MAX_PEOPLE_PER_DAY = 5
+CALENDAR_MONTHS: list[tuple[int, int]] = [(2027, m) for m in range(1, 13)] + [(2028, 1)]
 
 MONTH_NAMES = [
     "ENERO",
@@ -51,6 +53,7 @@ HOLIDAYS: dict[str, str] = {
     "2027-12-08": "Inmaculada Concepción",
     "2027-12-09": "Batalla de Ayacucho",
     "2027-12-25": "Navidad",
+    "2028-01-01": "Año Nuevo (2028)",
 }
 
 PRESET_COLORS = [
@@ -73,14 +76,14 @@ def get_custom_week_number(d: date) -> int:
     return BASE_WEEK_NUM + ((monday - BASE_MONDAY).days // 7)
 
 
-def get_month_weeks(month: int) -> list[tuple[int, list[int | None]]]:
-    """Devuelve lista de (num_semana, [lun..dom]) para un mes de 2027."""
+def get_month_weeks(year: int, month: int) -> list[tuple[int, list[int | None]]]:
+    """Devuelve lista de (num_semana, [lun..dom]) para un mes y año dados."""
     cal = calendar.Calendar(firstweekday=0)  # 0 = Lunes
-    weeks_raw = cal.monthdayscalendar(YEAR, month)
+    weeks_raw = cal.monthdayscalendar(year, month)
     result: list[tuple[int, list[int | None]]] = []
     for week in weeks_raw:
         first_day = next(day for day in week if day != 0)
-        week_num = get_custom_week_number(date(YEAR, month, first_day))
+        week_num = get_custom_week_number(date(year, month, first_day))
         cells = [day if day != 0 else None for day in week]
         result.append((week_num, cells))
     return result
@@ -100,7 +103,7 @@ def _get_day_person_ids(raw_val: Any) -> list[str]:
     if isinstance(raw_val, str) and raw_val:
         return [raw_val]
     if isinstance(raw_val, list):
-        return [pid for pid in raw_val if isinstance(pid, str) and pid][:3]
+        return [pid for pid in raw_val if isinstance(pid, str) and pid][:MAX_PEOPLE_PER_DAY]
     return []
 
 
@@ -117,7 +120,7 @@ def build_legend_html(data: dict[str, Any]) -> str:
     items_html = [
         '<div class="legend-item">'
         '<span class="legend-swatch holiday-swatch"></span>'
-        '<span class="legend-label"><strong>Feriado / Fecha considerada</strong> (18)</span>'
+        f'<span class="legend-label"><strong>Feriado / Fecha considerada</strong> ({len(HOLIDAYS)})</span>'
         "</div>"
     ]
 
@@ -143,15 +146,15 @@ def build_legend_html(data: dict[str, Any]) -> str:
 
 
 def build_calendar_html(data: dict[str, Any]) -> str:
-    """Genera el HTML completo del calendario 2027 (12 meses + leyenda + feriados)."""
+    """Genera el HTML completo del calendario 2027 + Enero 2028 (13 meses + leyenda + feriados)."""
     people: dict[str, dict[str, str]] = data.get("people", {})
     days_map: dict[str, Any] = data.get("days", {})
 
     months_html: list[str] = []
-    for m in range(1, 13):
-        m_name = MONTH_NAMES[m - 1]
-        m_num = f"{m:02d}"
-        weeks = get_month_weeks(m)
+    for yr, m in CALENDAR_MONTHS:
+        m_name = MONTH_NAMES[m - 1] if yr == YEAR else f"{MONTH_NAMES[m - 1]} {yr}"
+        m_num = f"{m:02d}" if yr == YEAR else f"{m:02d}/{str(yr)[2:]}"
+        weeks = get_month_weeks(yr, m)
 
         rows_html: list[str] = []
         for week_num, cells in weeks:
@@ -161,7 +164,7 @@ def build_calendar_html(data: dict[str, Any]) -> str:
                     td_cells.append('<td class="day-empty"></td>')
                     continue
 
-                iso = f"{YEAR}-{m:02d}-{day_num:02d}"
+                iso = f"{yr}-{m:02d}-{day_num:02d}"
                 is_weekend = idx >= 5
                 holiday_name = HOLIDAYS.get(iso)
                 day_pids = _get_day_person_ids(days_map.get(iso))
@@ -175,7 +178,7 @@ def build_calendar_html(data: dict[str, Any]) -> str:
                 if assigned_people:
                     classes.append("has-marks")
 
-                title_parts: list[str] = [f"{day_num:02d} {MONTH_ABBR[m-1]} {YEAR}"]
+                title_parts: list[str] = [f"{day_num:02d} {MONTH_ABBR[m-1]} {yr}"]
                 if assigned_people:
                     names_str = ", ".join(p.get("name", "") for p in assigned_people)
                     title_parts.append(f"Asignado a: {names_str}")
@@ -220,10 +223,11 @@ def build_calendar_html(data: dict[str, Any]) -> str:
             """
         )
 
-    # Feriados footer (2 columns, 9 items each)
+    # Feriados footer (2 columns)
     holiday_items = sorted(HOLIDAYS.items())
-    left_col = holiday_items[:9]
-    right_col = holiday_items[9:]
+    mid_idx = (len(holiday_items) + 1) // 2
+    left_col = holiday_items[:mid_idx]
+    right_col = holiday_items[mid_idx:]
 
     def render_holiday_list(items: list[tuple[str, str]]) -> str:
         lis = []
@@ -243,7 +247,7 @@ def build_calendar_html(data: dict[str, Any]) -> str:
         <div class="cal-top-header">
             <div>
                 <div class="cal-kicker">CALENDARIO</div>
-                <div class="cal-year">2027</div>
+                <div class="cal-year">2027 <span style="font-size:18px;font-weight:700;color:#6b7280;">– Ene 2028</span></div>
                 <div class="cal-subtitle">Mantenimiento Planeamiento Mina / Gerencia Concentradora</div>
             </div>
             <div class="cal-brand">
@@ -261,7 +265,7 @@ def build_calendar_html(data: dict[str, Any]) -> str:
         <div class="holidays-footer">
             <div class="holidays-title">
                 <span><span class="hol-bar"></span> FERIADOS Y FECHAS CONSIDERADAS</span>
-                <span class="hol-count">18 fechas</span>
+                <span class="hol-count">{len(HOLIDAYS)} fechas</span>
             </div>
             <div class="holidays-cols">
                 {render_holiday_list(left_col)}
@@ -467,8 +471,8 @@ CALENDAR_CSS = """
 }
 .day-marks {
     display: flex;
-    gap: 1.5px;
-    width: 86%;
+    gap: 1px;
+    width: 92%;
     margin: 2px auto 0 auto;
     height: 5px;
 }
