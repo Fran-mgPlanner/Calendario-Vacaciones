@@ -6,14 +6,15 @@ from datetime import date, timedelta
 from typing import Any
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 from calendar_data import (
-    CALENDAR_CSS,
     CALENDAR_MONTHS,
     MAX_PEOPLE_PER_DAY,
     MONTH_NAMES,
     PRESET_COLORS,
-    build_calendar_html,
+    YEAR,
+    build_interactive_document,
     build_printable_document,
 )
 from storage import is_github_persistence_enabled, load_data, update_data
@@ -25,7 +26,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-st.markdown(CALENDAR_CSS, unsafe_allow_html=True)
+# (El CSS y JS del calendario viven dentro de build_interactive_document)
 
 MONTH_NAMES_TITLE = [m.capitalize() for m in MONTH_NAMES]
 
@@ -252,7 +253,7 @@ with st.sidebar:
                     step=1,
                 )
             )
-            d_calc_end = min(d_ini + timedelta(days=cant_dias - 1), date(2028, 1, 31))
+            d_calc_end = min(d_ini + timedelta(days=cant_dias - 1), date(YEAR, 12, 31))
             st.caption(f"Del **{d_ini.day:02d}/{d_ini.month:02d}** al **{_format_spanish_date(d_calc_end)}**")
 
             c3, c4 = st.columns(2)
@@ -314,6 +315,10 @@ with st.sidebar:
     st.caption("Tip: También puedes presionar **Ctrl + P** directamente en esta página.")
 
 # ---------------------------------------------------------------------------
-# MAIN: Calendario 2027 + Leyenda + Feriados
+# MAIN: Calendario 2027 interactivo + Leyenda + Feriados
 # ---------------------------------------------------------------------------
-st.markdown(build_calendar_html(st.session_state["cal_data"]), unsafe_allow_html=True)
+components.html(
+    build_interactive_document(st.session_state["cal_data"]),
+    height=1180,
+    scrolling=True,
+)

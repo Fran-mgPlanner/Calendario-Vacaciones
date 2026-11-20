@@ -7,7 +7,7 @@ from typing import Any
 
 YEAR = 2027
 MAX_PEOPLE_PER_DAY = 5
-CALENDAR_MONTHS: list[tuple[int, int]] = [(2027, m) for m in range(1, 13)] + [(2028, 1)]
+CALENDAR_MONTHS: list[tuple[int, int]] = [(2027, m) for m in range(1, 13)]
 
 MONTH_NAMES = [
     "ENERO",
@@ -53,7 +53,6 @@ HOLIDAYS: dict[str, str] = {
     "2027-12-08": "Inmaculada Concepción",
     "2027-12-09": "Batalla de Ayacucho",
     "2027-12-25": "Navidad",
-    "2028-01-01": "Año Nuevo (2028)",
 }
 
 PRESET_COLORS = [
@@ -130,7 +129,7 @@ def build_legend_html(data: dict[str, Any]) -> str:
         count = counts.get(pid, 0)
         suffix = f" ({count} {'día' if count == 1 else 'días'})"
         items_html.append(
-            f'<div class="legend-item">'
+            f'<div class="legend-item person-legend" data-pid="{escape(pid)}" data-name="{name}" data-color="{color}" title="Clic derecho para ver solo a {name}">'
             f'<span class="legend-swatch" style="background:{color};"></span>'
             f'<span class="legend-label"><strong>{name}</strong>{suffix}</span>'
             f"</div>"
@@ -142,7 +141,15 @@ def build_legend_html(data: dict[str, Any]) -> str:
             "Agrega una persona y elige un color en el panel izquierdo.</div>"
         )
 
-    return f'<div class="legend-box"><div class="legend-title">LEYENDA DE PERIODOS</div><div class="legend-grid">{"".join(items_html)}</div></div>'
+    return (
+        '<div class="legend-box">'
+        '<div class="legend-header-row">'
+        '<div class="legend-title">LEYENDA DE PERIODOS <span class="legend-hint">(Clic en barrita = ver nombre · Clic derecho = filtrar)</span></div>'
+        '<button type="button" id="reset-filter-btn" class="reset-filter-btn" style="display:none;">👥 Visualizar todos</button>'
+        '</div>'
+        f'<div class="legend-grid">{"".join(items_html)}</div>'
+        '</div>'
+    )
 
 
 def build_calendar_html(data: dict[str, Any]) -> str:
@@ -167,27 +174,32 @@ def build_calendar_html(data: dict[str, Any]) -> str:
                 iso = f"{yr}-{m:02d}-{day_num:02d}"
                 is_weekend = idx >= 5
                 holiday_name = HOLIDAYS.get(iso)
-                day_pids = _get_day_person_ids(days_map.get(iso))
-                assigned_people = [people[pid] for pid in day_pids if pid in people]
+                day_pids = [pid for pid in _get_day_person_ids(days_map.get(iso)) if pid in people]
 
                 classes = ["day-cell"]
                 if is_weekend:
                     classes.append("weekend")
                 if holiday_name:
                     classes.append("holiday")
-                if assigned_people:
+                if day_pids:
                     classes.append("has-marks")
 
-                title_parts: list[str] = [f"{day_num:02d} {MONTH_ABBR[m-1]} {yr}"]
-                if assigned_people:
-                    names_str = ", ".join(p.get("name", "") for p in assigned_people)
+                date_label = f"{day_num:02d} {MONTH_ABBR[m-1]} {yr}"
+                title_parts: list[str] = [date_label]
+                if day_pids:
+                    names_str = ", ".join(people[pid].get("name", "") for pid in day_pids)
                     title_parts.append(f"Asignado a: {names_str}")
                 if holiday_name:
                     title_parts.append(f"Feriado: {holiday_name}")
 
                 bars_html = "".join(
-                    f'<span class="mark-bar" style="background-color:{escape(p.get("color", "#3B82F6"))};"></span>'
-                    for p in assigned_people
+                    f'<span class="mark-bar" '
+                    f'data-pid="{escape(pid)}" '
+                    f'data-name="{escape(people[pid].get("name", pid))}" '
+                    f'data-color="{escape(people[pid].get("color", "#3B82F6"))}" '
+                    f'data-date="{escape(date_label)}" '
+                    f'style="background-color:{escape(people[pid].get("color", "#3B82F6"))};"></span>'
+                    for pid in day_pids
                 )
                 marks_html = f'<div class="day-marks">{bars_html}</div>' if bars_html else '<div class="day-marks empty-marks"></div>'
 
@@ -247,7 +259,7 @@ def build_calendar_html(data: dict[str, Any]) -> str:
         <div class="cal-top-header">
             <div>
                 <div class="cal-kicker">CALENDARIO</div>
-                <div class="cal-year">2027 <span style="font-size:18px;font-weight:700;color:#6b7280;">– Ene 2028</span></div>
+                <div class="cal-year">2027</div>
                 <div class="cal-subtitle">Mantenimiento Planeamiento Mina / Gerencia Concentradora</div>
             </div>
             <div class="cal-brand">
@@ -538,13 +550,125 @@ CALENDAR_CSS = """
     color: #374151;
 }
 
+.legend-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+    gap: 8px;
+}
+.legend-hint {
+    font-weight: 500;
+    color: #9ca3af;
+    text-transform: none;
+    letter-spacing: 0;
+}
+.reset-filter-btn {
+    background: #1f2937;
+    color: #ffffff;
+    border: none;
+    border-radius: 4px;
+    padding: 3px 9px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.reset-filter-btn:hover {
+    background: #374151;
+}
+.person-legend {
+    cursor: context-menu;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+.person-legend:hover {
+    background-color: #eef2f7;
+}
+.person-legend.active-filter {
+    background-color: #e0e7ff;
+    outline: 1.5px solid #4f46e5;
+}
+.person-legend.dimmed-filter {
+    opacity: 0.32;
+}
+.mark-bar {
+    cursor: pointer;
+    transition: transform 0.1s ease;
+}
+.mark-bar:hover {
+    transform: scaleY(1.35);
+}
+.bar-tooltip {
+    position: fixed;
+    z-index: 9998;
+    background: #111827;
+    color: #ffffff;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+    display: none;
+    align-items: center;
+    gap: 7px;
+    pointer-events: none;
+    white-space: nowrap;
+}
+.bar-tooltip-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    flex-shrink: 0;
+}
+.cal-context-menu {
+    position: fixed;
+    z-index: 9999;
+    background: #ffffff;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.18);
+    min-width: 210px;
+    padding: 4px;
+    display: none;
+    font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+.cal-ctx-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: none;
+    padding: 7px 10px;
+    font-size: 12.5px;
+    color: #1f2937;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.cal-ctx-item:hover {
+    background: #f3f4f6;
+}
+.cal-ctx-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    display: inline-block;
+    flex-shrink: 0;
+}
+
 /* Estilos de impresión en Streamlit */
 @media print {
     header[data-testid="stHeader"],
     section[data-testid="stSidebar"],
     div[data-testid="stToolbar"],
     div[data-testid="stDecoration"],
-    .no-print {
+    .no-print,
+    .legend-hint,
+    .reset-filter-btn,
+    .bar-tooltip,
+    .cal-context-menu {
         display: none !important;
     }
     .main .block-container {
@@ -563,6 +687,195 @@ CALENDAR_CSS = """
     }
 }
 </style>
+"""
+
+
+CALENDAR_INTERACTIVE_JS = """
+<div id="bar-tooltip" class="bar-tooltip">
+    <span id="bar-tooltip-dot" class="bar-tooltip-dot"></span>
+    <span id="bar-tooltip-text"></span>
+</div>
+<div id="cal-context-menu" class="cal-context-menu">
+    <button type="button" id="ctx-only-btn" class="cal-ctx-item">
+        <span id="ctx-only-dot" class="cal-ctx-dot"></span>
+        <span id="ctx-only-label">Visualizar solo seleccionado</span>
+    </button>
+    <button type="button" id="ctx-all-btn" class="cal-ctx-item">
+        <span>👥</span>
+        <span>Visualizar todos</span>
+    </button>
+</div>
+<script>
+(function() {
+    const tooltip = document.getElementById("bar-tooltip");
+    const tooltipDot = document.getElementById("bar-tooltip-dot");
+    const tooltipText = document.getElementById("bar-tooltip-text");
+    const ctxMenu = document.getElementById("cal-context-menu");
+    const ctxOnlyBtn = document.getElementById("ctx-only-btn");
+    const ctxOnlyDot = document.getElementById("ctx-only-dot");
+    const ctxOnlyLabel = document.getElementById("ctx-only-label");
+    const ctxAllBtn = document.getElementById("ctx-all-btn");
+    const resetBtn = document.getElementById("reset-filter-btn");
+
+    let activeFilterPid = null;
+    let contextTarget = null;
+
+    function hideTooltip() {
+        tooltip.style.display = "none";
+    }
+
+    function hideContextMenu() {
+        ctxMenu.style.display = "none";
+    }
+
+    function applyFilter(pid) {
+        activeFilterPid = pid;
+        const bars = document.querySelectorAll(".mark-bar");
+        bars.forEach(function(bar) {
+            if (!pid || bar.dataset.pid === pid) {
+                bar.style.display = "";
+            } else {
+                bar.style.display = "none";
+            }
+        });
+
+        const legends = document.querySelectorAll(".person-legend");
+        legends.forEach(function(leg) {
+            leg.classList.remove("active-filter", "dimmed-filter");
+            if (pid) {
+                if (leg.dataset.pid === pid) {
+                    leg.classList.add("active-filter");
+                } else {
+                    leg.classList.add("dimmed-filter");
+                }
+            }
+        });
+
+        if (resetBtn) {
+            resetBtn.style.display = pid ? "inline-block" : "none";
+        }
+    }
+
+    function showTooltipForBar(bar, clientX, clientY) {
+        const name = bar.dataset.name || "";
+        const color = bar.dataset.color || "#3B82F6";
+        const dateStr = bar.dataset.date || "";
+        tooltipDot.style.backgroundColor = color;
+        tooltipText.innerHTML = "<strong>" + name + "</strong>" + (dateStr ? " · " + dateStr : "");
+        tooltip.style.display = "flex";
+
+        const rect = tooltip.getBoundingClientRect();
+        let left = clientX - rect.width / 2;
+        let top = clientY - rect.height - 12;
+        if (left < 8) left = 8;
+        if (left + rect.width > window.innerWidth - 8) left = window.innerWidth - rect.width - 8;
+        if (top < 8) top = clientY + 14;
+        tooltip.style.left = left + "px";
+        tooltip.style.top = top + "px";
+    }
+
+    function showContextMenu(targetEl, clientX, clientY) {
+        contextTarget = {
+            pid: targetEl.dataset.pid,
+            name: targetEl.dataset.name || "seleccionado",
+            color: targetEl.dataset.color || "#3B82F6"
+        };
+        ctxOnlyDot.style.backgroundColor = contextTarget.color;
+        ctxOnlyLabel.textContent = "Visualizar solo seleccionado (" + contextTarget.name + ")";
+        ctxMenu.style.display = "block";
+
+        const rect = ctxMenu.getBoundingClientRect();
+        let left = clientX;
+        let top = clientY;
+        if (left + rect.width > window.innerWidth - 8) left = window.innerWidth - rect.width - 8;
+        if (top + rect.height > window.innerHeight - 8) top = window.innerHeight - rect.height - 8;
+        if (left < 8) left = 8;
+        if (top < 8) top = 8;
+        ctxMenu.style.left = left + "px";
+        ctxMenu.style.top = top + "px";
+    }
+
+    document.addEventListener("click", function(e) {
+        const bar = e.target.closest(".mark-bar");
+        hideContextMenu();
+        if (bar) {
+            e.stopPropagation();
+            showTooltipForBar(bar, e.clientX, e.clientY);
+        } else {
+            hideTooltip();
+        }
+    });
+
+    document.addEventListener("contextmenu", function(e) {
+        const targetEl = e.target.closest(".mark-bar, .person-legend");
+        if (targetEl && targetEl.dataset.pid) {
+            e.preventDefault();
+            hideTooltip();
+            showContextMenu(targetEl, e.clientX, e.clientY);
+        } else {
+            hideContextMenu();
+        }
+    });
+
+    document.addEventListener("keydown", function(e) {
+        if (e.key === "Escape") {
+            hideTooltip();
+            hideContextMenu();
+        }
+    });
+
+    if (ctxOnlyBtn) {
+        ctxOnlyBtn.addEventListener("click", function(e) {
+            e.stopPropagation();
+            if (contextTarget && contextTarget.pid) {
+                applyFilter(contextTarget.pid);
+            }
+            hideContextMenu();
+        });
+    }
+
+    if (ctxAllBtn) {
+        ctxAllBtn.addEventListener("click", function(e) {
+            e.stopPropagation();
+            applyFilter(null);
+            hideContextMenu();
+        });
+    }
+
+    if (resetBtn) {
+        resetBtn.addEventListener("click", function(e) {
+            e.stopPropagation();
+            applyFilter(null);
+        });
+    }
+})();
+</script>
+"""
+
+
+def build_interactive_document(data: dict[str, Any]) -> str:
+    """Genera el documento HTML interactivo para embeber en Streamlit."""
+    cal_html = build_calendar_html(data)
+    return f"""<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+{CALENDAR_CSS}
+<style>
+html, body {{
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}}
+</style>
+</head>
+<body>
+{cal_html}
+{CALENDAR_INTERACTIVE_JS}
+</body>
+</html>
 """
 
 
@@ -657,6 +970,7 @@ body {{
     <button class="print-btn" onclick="window.print()">🖨️ Imprimir / Guardar como PDF</button>
 </div>
 {cal_html}
+{CALENDAR_INTERACTIVE_JS}
 </body>
 </html>
 """
